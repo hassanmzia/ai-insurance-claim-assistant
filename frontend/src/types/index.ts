@@ -185,6 +185,7 @@ export interface Notification {
   notification_type: string;
   title: string;
   message: string;
+  claim: string | null;
   claim_number: string | null;
   is_read: boolean;
   created_at: string;

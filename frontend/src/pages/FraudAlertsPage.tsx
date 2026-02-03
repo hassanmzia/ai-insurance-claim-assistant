@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { FiAlertTriangle, FiShield } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import api from '../services/api';
@@ -79,7 +80,11 @@ const FraudAlertsPage: React.FC = () => {
               ) : (
                 alerts.results.map((alert) => (
                   <tr key={alert.id}>
-                    <td style={{ fontWeight: 600, color: '#1a56db' }}>{alert.claim_number}</td>
+                    <td style={{ fontWeight: 600 }}>
+                      <Link to={`/claims/${alert.claim}`} style={{ color: '#1a56db', textDecoration: 'none' }}>
+                        {alert.claim_number}
+                      </Link>
+                    </td>
                     <td>{alert.alert_type}</td>
                     <td>
                       <span className="badge" style={{ background: severityColors[alert.severity] + '20', color: severityColors[alert.severity] }}>

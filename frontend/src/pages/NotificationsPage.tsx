@@ -81,7 +81,7 @@ const NotificationsPage: React.FC = () => {
                 }}
                 onClick={() => {
                   markRead(notif.id);
-                  if (notif.claim_number) navigate(`/claims`);
+                  if (notif.claim) navigate(`/claims/${notif.claim}`);
                 }}
               >
                 <div style={{

@@ -87,7 +87,7 @@ const ClaimDetailPage: React.FC = () => {
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>;
   if (!claim) return <div className="empty-state"><h3>Claim not found</h3></div>;
 
-  const aiDecision = claim.ai_recommendation?.ai_decision as string | undefined;
+  const aiDecision = claim.ai_recommendation?.ai_decision;
 
   return (
     <div>

@@ -106,6 +106,7 @@ export interface AIRecommendation {
   recommendation_summary: string;
   deductible: number | null;
   settlement_amount: number | null;
+  ai_decision?: 'approve' | 'deny';
 }
 
 export interface ProcessingLogEntry {

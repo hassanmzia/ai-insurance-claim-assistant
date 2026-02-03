@@ -143,9 +143,19 @@ class ClaimViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         profile = getattr(user, 'profile', None)
-        if profile and profile.role in ('admin', 'adjuster', 'reviewer'):
-            return Claim.objects.all()
-        return Claim.objects.filter(claimant=user)
+        qs = Claim.objects.all()
+
+        if profile and profile.role == 'admin':
+            return qs
+        elif profile and profile.role in ('adjuster', 'reviewer'):
+            # Adjusters see claims assigned to them + unassigned
+            view_mode = self.request.query_params.get('view', 'all')
+            if view_mode == 'mine':
+                return qs.filter(assigned_adjuster=user)
+            return qs
+        else:
+            # Customers see only their own claims
+            return qs.filter(claimant=user)
 
     def perform_create(self, serializer):
         claim = serializer.save()
@@ -379,11 +389,22 @@ class NotificationViewSet(viewsets.ModelViewSet):
 # ==========================================================================
 @api_view(['GET'])
 def dashboard_summary(request):
-    """Get comprehensive dashboard analytics."""
+    """Get comprehensive dashboard analytics, role-aware."""
     now = timezone.now()
     thirty_days_ago = now - timedelta(days=30)
 
-    claims = Claim.objects.all()
+    user = request.user
+    profile = getattr(user, 'profile', None)
+    role = profile.role if profile else 'customer'
+
+    # Scope claims by role
+    if role == 'admin':
+        claims = Claim.objects.all()
+    elif role in ('adjuster', 'reviewer'):
+        claims = Claim.objects.all()  # adjusters see all, but we add their stats
+    else:
+        claims = Claim.objects.filter(claimant=user)
+
     recent_claims = claims.filter(created_at__gte=thirty_days_ago)
 
     status_counts = dict(claims.values_list('status').annotate(count=Count('id')).values_list('status', 'count'))
@@ -411,6 +432,7 @@ def dashboard_summary(request):
             avg_time = avg_delta.total_seconds() / 3600
 
     data = {
+        'role': role,
         'total_claims': claims.count(),
         'pending_claims': claims.filter(
             status__in=['submitted', 'under_review', 'ai_processing', 'pending_info']
@@ -427,6 +449,24 @@ def dashboard_summary(request):
         ).data,
         'monthly_trend': monthly_trend,
     }
+
+    # Add role-specific data
+    if role in ('adjuster', 'reviewer'):
+        my_claims = Claim.objects.filter(assigned_adjuster=user)
+        data['my_claims_count'] = my_claims.count()
+        data['my_pending_count'] = my_claims.filter(
+            status__in=['submitted', 'under_review', 'ai_processing', 'pending_info']
+        ).count()
+        data['my_recent_claims'] = ClaimListSerializer(
+            my_claims.order_by('-updated_at')[:5], many=True
+        ).data
+    elif role == 'admin':
+        data['total_users'] = User.objects.count()
+        data['total_adjusters'] = UserProfile.objects.filter(role='adjuster').count()
+        data['unassigned_claims'] = claims.filter(assigned_adjuster__isnull=True).exclude(
+            status__in=['draft', 'closed', 'settled']
+        ).count()
+
     return Response(data)
 
 

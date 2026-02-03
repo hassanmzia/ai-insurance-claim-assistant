@@ -12,6 +12,7 @@ import FraudAlertsPage from './pages/FraudAlertsPage';
 import AgentsPage from './pages/AgentsPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import NotificationsPage from './pages/NotificationsPage';
+import PolicyDocumentsPage from './pages/PolicyDocumentsPage';
 import './App.css';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -43,6 +44,7 @@ const App: React.FC = () => {
             <Route path="claims" element={<ClaimsPage />} />
             <Route path="claims/new" element={<NewClaimPage />} />
             <Route path="claims/:id" element={<ClaimDetailPage />} />
+            <Route path="policy-documents" element={<PolicyDocumentsPage />} />
             <Route path="fraud-alerts" element={<FraudAlertsPage />} />
             <Route path="agents" element={<AgentsPage />} />
             <Route path="analytics" element={<AnalyticsPage />} />

@@ -5,17 +5,24 @@ import {
   Title, Tooltip, Legend, PointElement, LineElement,
 } from 'chart.js';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
-import { FiFileText, FiCheckCircle, FiXCircle, FiClock, FiDollarSign, FiAlertTriangle } from 'react-icons/fi';
+import {
+  FiFileText, FiCheckCircle, FiXCircle, FiClock, FiDollarSign,
+  FiAlertTriangle, FiUsers, FiUserCheck, FiInbox,
+} from 'react-icons/fi';
+import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { DashboardSummary } from '../types';
-import { formatCurrency, formatDate, statusColor, statusLabel } from '../utils/helpers';
+import { formatCurrency, statusColor, statusLabel } from '../utils/helpers';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Title, Tooltip, Legend, PointElement, LineElement);
 
 const DashboardPage: React.FC = () => {
   const [data, setData] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
   const navigate = useNavigate();
+
+  const role = (data as any)?.role || user?.role || 'customer';
 
   useEffect(() => {
     api.getDashboard()
@@ -26,6 +33,20 @@ const DashboardPage: React.FC = () => {
 
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>;
   if (!data) return <div className="empty-state"><h3>Unable to load dashboard</h3></div>;
+
+  const roleTitle: Record<string, string> = {
+    admin: 'Administrator Dashboard',
+    adjuster: 'Claims Adjuster Dashboard',
+    reviewer: 'Claims Reviewer Dashboard',
+    customer: 'My Insurance Dashboard',
+  };
+
+  const roleSubtitle: Record<string, string> = {
+    admin: 'System-wide claims overview and management',
+    adjuster: 'Your assigned claims and processing queue',
+    reviewer: 'Claims review and quality assurance',
+    customer: 'Track your insurance claims',
+  };
 
   const statusChartData = {
     labels: Object.keys(data.claims_by_status).map(statusLabel),
@@ -41,16 +62,14 @@ const DashboardPage: React.FC = () => {
       const d = new Date(m.month);
       return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
     }),
-    datasets: [
-      {
-        label: 'Claims',
-        data: data.monthly_trend.map((m) => m.count),
-        borderColor: '#1a56db',
-        backgroundColor: 'rgba(26,86,219,0.1)',
-        fill: true,
-        tension: 0.4,
-      },
-    ],
+    datasets: [{
+      label: 'Claims',
+      data: data.monthly_trend.map((m) => m.count),
+      borderColor: '#1a56db',
+      backgroundColor: 'rgba(26,86,219,0.1)',
+      fill: true,
+      tension: 0.4,
+    }],
   };
 
   const typeChartData = {
@@ -64,12 +83,14 @@ const DashboardPage: React.FC = () => {
     }],
   };
 
+  const ext = data as any; // extended role-specific fields
+
   return (
     <div>
       <div className="page-header">
         <div>
-          <h2>Dashboard</h2>
-          <p className="subtitle">AI Insurance Claim Processing Overview</p>
+          <h2>{roleTitle[role] || 'Dashboard'}</h2>
+          <p className="subtitle">{roleSubtitle[role] || 'AI Insurance Claim Processing Overview'}</p>
         </div>
         <div className="header-actions">
           <button className="btn btn-primary" onClick={() => navigate('/claims/new')}>
@@ -78,78 +99,220 @@ const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-icon" style={{ background: '#eff6ff', color: '#1a56db' }}><FiFileText /></div>
-          <div className="stat-content">
-            <div className="stat-value">{data.total_claims}</div>
-            <div className="stat-label">Total Claims</div>
+      {/* Admin-specific stats */}
+      {role === 'admin' && (
+        <div className="stats-grid">
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: '#eff6ff', color: '#1a56db' }}><FiFileText /></div>
+            <div className="stat-content">
+              <div className="stat-value">{data.total_claims}</div>
+              <div className="stat-label">Total Claims</div>
+            </div>
           </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon" style={{ background: '#fef3c7', color: '#f59e0b' }}><FiClock /></div>
-          <div className="stat-content">
-            <div className="stat-value">{data.pending_claims}</div>
-            <div className="stat-label">Pending Claims</div>
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: '#fef3c7', color: '#f59e0b' }}><FiClock /></div>
+            <div className="stat-content">
+              <div className="stat-value">{data.pending_claims}</div>
+              <div className="stat-label">Pending Claims</div>
+            </div>
           </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon" style={{ background: '#ecfdf5', color: '#10b981' }}><FiCheckCircle /></div>
-          <div className="stat-content">
-            <div className="stat-value">{data.approved_claims}</div>
-            <div className="stat-label">Approved</div>
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: '#ecfdf5', color: '#10b981' }}><FiCheckCircle /></div>
+            <div className="stat-content">
+              <div className="stat-value">{data.approved_claims}</div>
+              <div className="stat-label">Approved</div>
+            </div>
           </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon" style={{ background: '#fef2f2', color: '#ef4444' }}><FiXCircle /></div>
-          <div className="stat-content">
-            <div className="stat-value">{data.denied_claims}</div>
-            <div className="stat-label">Denied</div>
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: '#fef2f2', color: '#ef4444' }}><FiXCircle /></div>
+            <div className="stat-content">
+              <div className="stat-value">{data.denied_claims}</div>
+              <div className="stat-label">Denied</div>
+            </div>
           </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon" style={{ background: '#ecfdf5', color: '#10b981' }}><FiDollarSign /></div>
-          <div className="stat-content">
-            <div className="stat-value">{formatCurrency(data.total_payout)}</div>
-            <div className="stat-label">Total Payouts</div>
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: '#ecfdf5', color: '#10b981' }}><FiDollarSign /></div>
+            <div className="stat-content">
+              <div className="stat-value">{formatCurrency(data.total_payout)}</div>
+              <div className="stat-label">Total Payouts</div>
+            </div>
           </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon" style={{ background: '#fef2f2', color: '#ef4444' }}><FiAlertTriangle /></div>
-          <div className="stat-content">
-            <div className="stat-value">{data.fraud_alerts_count}</div>
-            <div className="stat-label">Active Fraud Alerts</div>
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: '#fef2f2', color: '#ef4444' }}><FiAlertTriangle /></div>
+            <div className="stat-content">
+              <div className="stat-value">{data.fraud_alerts_count}</div>
+              <div className="stat-label">Fraud Alerts</div>
+            </div>
           </div>
-        </div>
-      </div>
-
-      <div className="grid-2" style={{ marginBottom: '24px' }}>
-        <div className="card">
-          <div className="card-header"><h3>Claims Trend (12 Months)</h3></div>
-          <div className="card-body">
-            <Line data={trendData} options={{ responsive: true, plugins: { legend: { display: false } } }} />
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: '#f5f3ff', color: '#7c3aed' }}><FiUsers /></div>
+            <div className="stat-content">
+              <div className="stat-value">{ext.total_users || 0}</div>
+              <div className="stat-label">Total Users</div>
+            </div>
           </div>
-        </div>
-        <div className="card">
-          <div className="card-header"><h3>Claims by Status</h3></div>
-          <div className="card-body" style={{ display: 'flex', justifyContent: 'center' }}>
-            <div style={{ maxWidth: '280px' }}>
-              <Doughnut data={statusChartData} options={{ responsive: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 8, font: { size: 11 } } } } }} />
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: '#fff7ed', color: '#f97316' }}><FiInbox /></div>
+            <div className="stat-content">
+              <div className="stat-value">{ext.unassigned_claims || 0}</div>
+              <div className="stat-label">Unassigned Claims</div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
-      <div className="grid-2">
-        <div className="card">
-          <div className="card-header"><h3>Claims by Type</h3></div>
-          <div className="card-body">
-            <Bar data={typeChartData} options={{ responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }} />
+      {/* Adjuster-specific stats */}
+      {role === 'adjuster' && (
+        <div className="stats-grid">
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: '#eff6ff', color: '#1a56db' }}><FiUserCheck /></div>
+            <div className="stat-content">
+              <div className="stat-value">{ext.my_claims_count || 0}</div>
+              <div className="stat-label">My Assigned Claims</div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: '#fef3c7', color: '#f59e0b' }}><FiClock /></div>
+            <div className="stat-content">
+              <div className="stat-value">{ext.my_pending_count || 0}</div>
+              <div className="stat-label">My Pending</div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: '#ecfdf5', color: '#10b981' }}><FiFileText /></div>
+            <div className="stat-content">
+              <div className="stat-value">{data.total_claims}</div>
+              <div className="stat-label">Total in System</div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: '#fef3c7', color: '#f59e0b' }}><FiClock /></div>
+            <div className="stat-content">
+              <div className="stat-value">{data.pending_claims}</div>
+              <div className="stat-label">All Pending</div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: '#ecfdf5', color: '#10b981' }}><FiDollarSign /></div>
+            <div className="stat-content">
+              <div className="stat-value">{formatCurrency(data.total_payout)}</div>
+              <div className="stat-label">Total Payouts</div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: '#fef2f2', color: '#ef4444' }}><FiAlertTriangle /></div>
+            <div className="stat-content">
+              <div className="stat-value">{data.fraud_alerts_count}</div>
+              <div className="stat-label">Fraud Alerts</div>
+            </div>
           </div>
         </div>
+      )}
+
+      {/* Customer-specific stats */}
+      {role === 'customer' && (
+        <div className="stats-grid">
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: '#eff6ff', color: '#1a56db' }}><FiFileText /></div>
+            <div className="stat-content">
+              <div className="stat-value">{data.total_claims}</div>
+              <div className="stat-label">My Claims</div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: '#fef3c7', color: '#f59e0b' }}><FiClock /></div>
+            <div className="stat-content">
+              <div className="stat-value">{data.pending_claims}</div>
+              <div className="stat-label">In Progress</div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: '#ecfdf5', color: '#10b981' }}><FiCheckCircle /></div>
+            <div className="stat-content">
+              <div className="stat-value">{data.approved_claims}</div>
+              <div className="stat-label">Approved</div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: '#ecfdf5', color: '#10b981' }}><FiDollarSign /></div>
+            <div className="stat-content">
+              <div className="stat-value">{formatCurrency(data.total_payout)}</div>
+              <div className="stat-label">Total Received</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Adjuster: My Assigned Claims */}
+      {role === 'adjuster' && ext.my_recent_claims && ext.my_recent_claims.length > 0 && (
+        <div className="card" style={{ marginBottom: '24px' }}>
+          <div className="card-header">
+            <h3>My Assigned Claims</h3>
+            <button className="btn btn-secondary btn-sm" onClick={() => navigate('/claims?view=mine')}>View All Mine</button>
+          </div>
+          <div className="card-body" style={{ padding: 0 }}>
+            <div className="table-container">
+              <table>
+                <thead>
+                  <tr><th>Claim #</th><th>Claimant</th><th>Status</th><th>Priority</th><th>Amount</th></tr>
+                </thead>
+                <tbody>
+                  {ext.my_recent_claims.map((claim: any) => (
+                    <tr key={claim.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/claims/${claim.id}`)}>
+                      <td style={{ fontWeight: 600 }}>{claim.claim_number}</td>
+                      <td>{claim.claimant_name}</td>
+                      <td>
+                        <span className="badge" style={{ background: statusColor(claim.status) + '20', color: statusColor(claim.status) }}>
+                          {statusLabel(claim.status)}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="badge" style={{ background: claim.priority === 'urgent' ? '#fef2f2' : claim.priority === 'high' ? '#fff7ed' : '#f9fafb', color: claim.priority === 'urgent' ? '#ef4444' : claim.priority === 'high' ? '#f97316' : '#6b7280' }}>
+                          {claim.priority?.toUpperCase()}
+                        </span>
+                      </td>
+                      <td>{formatCurrency(claim.estimated_repair_cost)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Charts - only for admin/adjuster */}
+      {(role === 'admin' || role === 'adjuster' || role === 'reviewer') && (
+        <div className="grid-2" style={{ marginBottom: '24px' }}>
+          <div className="card">
+            <div className="card-header"><h3>Claims Trend (12 Months)</h3></div>
+            <div className="card-body">
+              <Line data={trendData} options={{ responsive: true, plugins: { legend: { display: false } } }} />
+            </div>
+          </div>
+          <div className="card">
+            <div className="card-header"><h3>Claims by Status</h3></div>
+            <div className="card-body" style={{ display: 'flex', justifyContent: 'center' }}>
+              <div style={{ maxWidth: '280px' }}>
+                <Doughnut data={statusChartData} options={{ responsive: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 8, font: { size: 11 } } } } }} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="grid-2">
+        {(role === 'admin' || role === 'adjuster' || role === 'reviewer') && (
+          <div className="card">
+            <div className="card-header"><h3>Claims by Type</h3></div>
+            <div className="card-body">
+              <Bar data={typeChartData} options={{ responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }} />
+            </div>
+          </div>
+        )}
         <div className="card">
           <div className="card-header">
-            <h3>Recent Claims</h3>
+            <h3>{role === 'customer' ? 'My Claims' : 'Recent Claims'}</h3>
             <button className="btn btn-secondary btn-sm" onClick={() => navigate('/claims')}>View All</button>
           </div>
           <div className="card-body" style={{ padding: 0 }}>

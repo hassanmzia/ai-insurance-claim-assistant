@@ -1,4 +1,8 @@
 """Serializers for the Insurance Claims API."""
+import uuid
+import random
+from datetime import date, timedelta
+from decimal import Decimal
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import (
@@ -24,16 +28,51 @@ class UserProfileSerializer(serializers.ModelSerializer):
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
     role = serializers.ChoiceField(choices=UserProfile.ROLE_CHOICES, default='customer')
+    policy_type = serializers.ChoiceField(
+        choices=PolicyDocument.POLICY_TYPES, default='auto', write_only=True,
+    )
 
     class Meta:
         model = User
-        fields = ['username', 'email', 'password', 'first_name', 'last_name', 'role']
+        fields = ['username', 'email', 'password', 'first_name', 'last_name', 'role', 'policy_type']
+
+    def _generate_policy_number(self):
+        """Generate a unique policy number."""
+        while True:
+            num = f'POL-{random.randint(200000, 999999)}'
+            if not InsurancePolicy.objects.filter(policy_number=num).exists():
+                return num
 
     def create(self, validated_data):
         role = validated_data.pop('role', 'customer')
         password = validated_data.pop('password')
+        policy_type = validated_data.pop('policy_type', 'auto')
         user = User.objects.create_user(**validated_data, password=password)
         UserProfile.objects.create(user=user, role=role)
+
+        # Auto-create an insurance policy for customer users
+        if role == 'customer':
+            defaults = {
+                'auto': {'premium': 1200, 'deductible': 500, 'coverage': 50000,
+                         'vehicle': {'make_model': 'New Vehicle', 'year': str(date.today().year)}},
+                'home': {'premium': 1800, 'deductible': 1000, 'coverage': 250000, 'vehicle': {}},
+                'health': {'premium': 600, 'deductible': 500, 'coverage': 100000, 'vehicle': {}},
+                'life': {'premium': 400, 'deductible': 0, 'coverage': 500000, 'vehicle': {}},
+                'commercial': {'premium': 3000, 'deductible': 2000, 'coverage': 500000, 'vehicle': {}},
+            }
+            cfg = defaults.get(policy_type, defaults['auto'])
+            InsurancePolicy.objects.create(
+                policy_number=self._generate_policy_number(),
+                holder=user,
+                policy_type=policy_type,
+                status='active',
+                premium_amount=Decimal(str(cfg['premium'])),
+                deductible_amount=Decimal(str(cfg['deductible'])),
+                coverage_limit=Decimal(str(cfg['coverage'])),
+                effective_date=date.today(),
+                expiry_date=date.today() + timedelta(days=365),
+                vehicle_details=cfg['vehicle'],
+            )
         return user
 
 

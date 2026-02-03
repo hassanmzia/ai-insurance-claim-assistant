@@ -10,12 +10,13 @@ const RegisterPage: React.FC = () => {
     confirmPassword: '',
     first_name: '',
     last_name: '',
+    policy_type: 'auto',
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
@@ -41,6 +42,7 @@ const RegisterPage: React.FC = () => {
         first_name: formData.first_name,
         last_name: formData.last_name,
         role: 'customer',
+        policy_type: formData.policy_type,
       });
       navigate('/login', { state: { registered: true } });
     } catch (err: any) {
@@ -114,6 +116,22 @@ const RegisterPage: React.FC = () => {
               placeholder="your@email.com"
               required
             />
+          </div>
+          <div className="form-group">
+            <label>Insurance Type *</label>
+            <select
+              name="policy_type"
+              className="form-control"
+              value={formData.policy_type}
+              onChange={handleChange}
+              required
+            >
+              <option value="auto">Auto Insurance</option>
+              <option value="home">Home Insurance</option>
+              <option value="health">Health Insurance</option>
+              <option value="life">Life Insurance</option>
+              <option value="commercial">Commercial Insurance</option>
+            </select>
           </div>
           <div className="form-group">
             <label>Password</label>

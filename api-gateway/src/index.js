@@ -7,7 +7,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
-const { createProxyMiddleware, fixRequestBody } = require('http-proxy-middleware');
+const { createProxyMiddleware } = require('http-proxy-middleware');
 const rateLimit = require('express-rate-limit');
 const { WebSocketServer } = require('ws');
 const http = require('http');
@@ -18,7 +18,7 @@ const BACKEND_URL = process.env.BACKEND_URL || 'http://backend:8062';
 const AGENT_SERVICE_URL = process.env.AGENT_SERVICE_URL || 'http://agent-service:9062';
 const MCP_SERVER_URL = process.env.MCP_SERVER_URL || 'http://agent-service:5062';
 
-// Middleware - order matters: CORS and helmet first, then logging
+// Middleware
 app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(cors({
   origin: [
@@ -41,7 +41,7 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// Health check (only this route needs body parsing)
+// Health check
 app.get('/health', (req, res) => {
   res.json({
     status: 'healthy',
@@ -56,12 +56,12 @@ app.get('/health', (req, res) => {
 });
 
 // ============================================================
-// Proxy: /api/* -> Django Backend
+// Proxy: /api/** -> Django Backend (path passed through as-is)
 // ============================================================
-app.use('/api', createProxyMiddleware({
+app.use(createProxyMiddleware({
   target: BACKEND_URL,
   changeOrigin: true,
-  pathRewrite: { '^/api': '/api' },
+  pathFilter: '/api/**',
   timeout: 120000,
   onError: (err, req, res) => {
     console.error(`[Proxy] Backend error: ${err.message}`);
@@ -70,11 +70,12 @@ app.use('/api', createProxyMiddleware({
 }));
 
 // ============================================================
-// Proxy: /agents/* -> Agent Service
+// Proxy: /agents/** -> Agent Service (/agents/x -> /api/x)
 // ============================================================
-app.use('/agents', createProxyMiddleware({
+app.use(createProxyMiddleware({
   target: AGENT_SERVICE_URL,
   changeOrigin: true,
+  pathFilter: '/agents/**',
   pathRewrite: { '^/agents': '/api' },
   timeout: 180000,
   onError: (err, req, res) => {
@@ -84,11 +85,12 @@ app.use('/agents', createProxyMiddleware({
 }));
 
 // ============================================================
-// Proxy: /mcp/* -> MCP Server
+// Proxy: /mcp/** -> MCP Server (/mcp/x -> /x)
 // ============================================================
-app.use('/mcp', createProxyMiddleware({
+app.use(createProxyMiddleware({
   target: MCP_SERVER_URL,
   changeOrigin: true,
+  pathFilter: '/mcp/**',
   pathRewrite: { '^/mcp': '' },
   timeout: 60000,
   onError: (err, req, res) => {

@@ -28,6 +28,10 @@ from .serializers import (
     FraudAlertSerializer, AgentTaskSerializer, NotificationSerializer,
     DashboardMetricSerializer, ClaimProcessRequestSerializer,
 )
+from .permissions import (
+    IsAdmin, IsAdminOrAdjuster, IsStaff, IsStaffOrReadOnly,
+    IsOwnerOrStaff, CanProcessClaims, CanManageFraudAlerts,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +76,7 @@ def current_user(request):
 class PolicyDocumentViewSet(viewsets.ModelViewSet):
     queryset = PolicyDocument.objects.all()
     serializer_class = PolicyDocumentSerializer
+    permission_classes = [permissions.IsAuthenticated, IsStaffOrReadOnly]
     parser_classes = [MultiPartParser, FormParser]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ['policy_type', 'is_indexed']
@@ -131,6 +136,7 @@ class InsurancePolicyViewSet(viewsets.ModelViewSet):
 # Claims
 # ==========================================================================
 class ClaimViewSet(viewsets.ModelViewSet):
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrStaff]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['status', 'priority', 'loss_type']
     search_fields = ['claim_number', 'claimant__first_name', 'claimant__last_name', 'loss_description']
@@ -174,7 +180,7 @@ class ClaimViewSet(viewsets.ModelViewSet):
             claim=claim,
         )
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated, CanProcessClaims])
     def process(self, request, pk=None):
         """Trigger AI multi-agent processing for a claim."""
         claim = self.get_object()
@@ -399,7 +405,7 @@ class ClaimViewSet(viewsets.ModelViewSet):
             'fraud_score': claim.fraud_score,
         })
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated, IsAdmin])
     def assign(self, request, pk=None):
         """Assign an adjuster to a claim."""
         claim = self.get_object()
@@ -427,7 +433,7 @@ class ClaimViewSet(viewsets.ModelViewSet):
                 {'error': 'Adjuster not found'}, status=status.HTTP_404_NOT_FOUND
             )
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated, CanProcessClaims])
     def update_status(self, request, pk=None):
         """Update claim status with audit trail."""
         claim = self.get_object()
@@ -525,6 +531,7 @@ class ClaimViewSet(viewsets.ModelViewSet):
 class FraudAlertViewSet(viewsets.ModelViewSet):
     queryset = FraudAlert.objects.all()
     serializer_class = FraudAlertSerializer
+    permission_classes = [permissions.IsAuthenticated, CanManageFraudAlerts]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['severity', 'status']
 
@@ -545,6 +552,7 @@ class FraudAlertViewSet(viewsets.ModelViewSet):
 class AgentTaskViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = AgentTask.objects.all()
     serializer_class = AgentTaskSerializer
+    permission_classes = [permissions.IsAuthenticated, IsStaff]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['status', 'agent_type']
 
@@ -658,6 +666,7 @@ def dashboard_summary(request):
 
 
 @api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated, IsStaff])
 def analytics_report(request):
     """Detailed analytics report."""
     period = request.query_params.get('period', '30')

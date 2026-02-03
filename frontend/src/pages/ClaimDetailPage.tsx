@@ -7,6 +7,7 @@ import {
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { Claim } from '../types';
 import {
   formatCurrency, formatDate, formatDateTime, statusColor, statusLabel,
@@ -31,6 +32,9 @@ const ClaimDetailPage: React.FC = () => {
   const [noteContent, setNoteContent] = useState('');
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const role = user?.role || 'customer';
+  const isStaff = ['admin', 'adjuster', 'reviewer'].includes(role);
 
   useEffect(() => {
     if (id) {
@@ -102,57 +106,57 @@ const ClaimDetailPage: React.FC = () => {
           </div>
         </div>
         <div className="header-actions">
-          {/* AI Process - available for submitted, under_review, pending_info */}
-          {['submitted', 'under_review', 'pending_info'].includes(claim.status) && (
-            <button
-              className="btn btn-primary"
-              onClick={() => handleAIProcess('full')}
-              disabled={processing || claim.status === 'ai_processing'}
-            >
-              <FiCpu /> {processing ? 'Processing...' : claim.ai_recommendation ? 'Re-process AI' : 'AI Process'}
-            </button>
-          )}
-
-          {/* Approve / Deny - available when under_review */}
-          {claim.status === 'under_review' && (
+          {/* Staff actions: AI Process, Approve, Deny, Settle, etc. */}
+          {isStaff && (
             <>
-              <button className="btn btn-success" onClick={() => handleStatusUpdate('approved')}>
-                <FiCheckCircle /> Approve
-              </button>
-              <button className="btn btn-danger" onClick={() => handleStatusUpdate('denied')}>
-                <FiXCircle /> Deny
-              </button>
-              <button className="btn btn-secondary" onClick={() => handleStatusUpdate('pending_info')}>
-                <FiInfo /> Request Info
-              </button>
+              {['submitted', 'under_review', 'pending_info'].includes(claim.status) && (
+                <button
+                  className="btn btn-primary"
+                  onClick={() => handleAIProcess('full')}
+                  disabled={processing || claim.status === 'ai_processing'}
+                >
+                  <FiCpu /> {processing ? 'Processing...' : claim.ai_recommendation ? 'Re-process AI' : 'AI Process'}
+                </button>
+              )}
+
+              {claim.status === 'under_review' && (
+                <>
+                  <button className="btn btn-success" onClick={() => handleStatusUpdate('approved')}>
+                    <FiCheckCircle /> Approve
+                  </button>
+                  <button className="btn btn-danger" onClick={() => handleStatusUpdate('denied')}>
+                    <FiXCircle /> Deny
+                  </button>
+                  <button className="btn btn-secondary" onClick={() => handleStatusUpdate('pending_info')}>
+                    <FiInfo /> Request Info
+                  </button>
+                </>
+              )}
+
+              {claim.status === 'approved' && (
+                <button className="btn btn-success" onClick={() => handleStatusUpdate('settled')}>
+                  <FiDollarSign /> Settle
+                </button>
+              )}
+
+              {claim.status === 'pending_info' && (
+                <button className="btn btn-secondary" onClick={() => handleStatusUpdate('submitted')}>
+                  <FiSend /> Mark Info Received
+                </button>
+              )}
+
+              {claim.status === 'appealed' && (
+                <button className="btn btn-primary" onClick={() => handleStatusUpdate('under_review')}>
+                  <FiCpu /> Review Appeal
+                </button>
+              )}
             </>
           )}
 
-          {/* Settle - available when approved */}
-          {claim.status === 'approved' && (
-            <button className="btn btn-success" onClick={() => handleStatusUpdate('settled')}>
-              <FiDollarSign /> Settle
-            </button>
-          )}
-
-          {/* Resubmit - available when pending_info */}
-          {claim.status === 'pending_info' && (
-            <button className="btn btn-secondary" onClick={() => handleStatusUpdate('submitted')}>
-              <FiSend /> Mark Info Received
-            </button>
-          )}
-
-          {/* Appeal - available when denied */}
-          {claim.status === 'denied' && (
+          {/* Customer action: Appeal denied claims */}
+          {!isStaff && claim.status === 'denied' && (
             <button className="btn btn-secondary" onClick={() => handleStatusUpdate('appealed')}>
               <FiRotateCw /> Appeal
-            </button>
-          )}
-
-          {/* Re-open appeal as under_review */}
-          {claim.status === 'appealed' && (
-            <button className="btn btn-primary" onClick={() => handleStatusUpdate('under_review')}>
-              <FiCpu /> Review Appeal
             </button>
           )}
         </div>

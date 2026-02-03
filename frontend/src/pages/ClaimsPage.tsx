@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiPlus, FiSearch, FiFilter } from 'react-icons/fi';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { Claim, PaginatedResponse } from '../types';
 import { formatCurrency, formatDate, statusColor, statusLabel, priorityColor, fraudScoreLabel, fraudScoreColor } from '../utils/helpers';
 
@@ -10,6 +11,8 @@ const ClaimsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ status: '', priority: '', loss_type: '', search: '' });
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isStaff = ['admin', 'manager', 'adjuster', 'reviewer', 'agent'].includes(user?.role || '');
 
   const fetchClaims = (params?: Record<string, any>) => {
     setLoading(true);
@@ -102,6 +105,7 @@ const ClaimsPage: React.FC = () => {
                 <th>Policy</th>
                 <th>Type</th>
                 <th>Status</th>
+                {isStaff && <th>Assigned To</th>}
                 <th>Priority</th>
                 <th>Date of Loss</th>
                 <th>Est. Cost</th>
@@ -111,9 +115,9 @@ const ClaimsPage: React.FC = () => {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={10} style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></td></tr>
+                <tr><td colSpan={isStaff ? 11 : 10} style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></td></tr>
               ) : claims?.results?.length === 0 ? (
-                <tr><td colSpan={10} style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>No claims found</td></tr>
+                <tr><td colSpan={isStaff ? 11 : 10} style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>No claims found</td></tr>
               ) : (
                 claims?.results?.map((claim) => (
                   <tr key={claim.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/claims/${claim.id}`)}>
@@ -126,6 +130,15 @@ const ClaimsPage: React.FC = () => {
                         {statusLabel(claim.status)}
                       </span>
                     </td>
+                    {isStaff && (
+                      <td style={{ fontSize: '13px' }}>
+                        {claim.adjuster_name ? (
+                          <span style={{ color: '#374151', fontWeight: 500 }}>{claim.adjuster_name}</span>
+                        ) : (
+                          <span style={{ color: '#d1d5db', fontStyle: 'italic' }}>Unassigned</span>
+                        )}
+                      </td>
+                    )}
                     <td>
                       <span className="badge" style={{ background: priorityColor(claim.priority) + '20', color: priorityColor(claim.priority) }}>
                         {claim.priority.toUpperCase()}

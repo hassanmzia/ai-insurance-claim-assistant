@@ -86,7 +86,7 @@ const NewClaimPage: React.FC = () => {
                 <select name="policy" className="form-control" value={form.policy} onChange={handleChange} required>
                   <option value="">Select a policy...</option>
                   {policies.map((p) => (
-                    <option key={p.id} value={p.id}>{p.policy_number} - {p.holder_name}</option>
+                    <option key={p.id} value={p.id}>{p.policy_number} - {p.policy_type.charAt(0).toUpperCase() + p.policy_type.slice(1)} Insurance - {p.holder_name}</option>
                   ))}
                 </select>
               </div>

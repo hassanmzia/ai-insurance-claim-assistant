@@ -1,0 +1,195 @@
+version: '3.9'
+
+services:
+  # ==========================================================================
+  # PostgreSQL Database - Port 5462
+  # ==========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: insurance-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-insurance_claims}
+      POSTGRES_USER: ${POSTGRES_USER:-claims_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-claims_secure_pass_2026}
+    ports:
+      - "5462:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-claims_admin} -d ${POSTGRES_DB:-insurance_claims}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - insurance-network
+
+  # ==========================================================================
+  # Redis Cache & Message Broker - Port 6382
+  # ==========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: insurance-redis
+    restart: unless-stopped
+    ports:
+      - "6382:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - insurance-network
+
+  # ==========================================================================
+  # ChromaDB Vector Store - Port 8562
+  # ==========================================================================
+  chromadb:
+    image: chromadb/chroma:0.5.23
+    container_name: insurance-chromadb
+    restart: unless-stopped
+    ports:
+      - "8562:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - insurance-network
+
+  # ==========================================================================
+  # Django Backend API - Port 8062
+  # ==========================================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: insurance-backend
+    restart: unless-stopped
+    ports:
+      - "8062:8062"
+    env_file:
+      - .env
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-claims_admin}:${POSTGRES_PASSWORD:-claims_secure_pass_2026}@postgres:5432/${POSTGRES_DB:-insurance_claims}
+    volumes:
+      - ./backend:/app
+      - backend_media:/app/media
+      - backend_static:/app/staticfiles
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             python manage.py seed_data --noinput || true &&
+             daphne -b 0.0.0.0 -p 8062 config.asgi:application"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8062/api/health/"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - insurance-network
+
+  # ==========================================================================
+  # Agent Service (Multi-Agent + MCP + A2A) - Ports 9062, 5062
+  # ==========================================================================
+  agent-service:
+    build:
+      context: ./agent-service
+      dockerfile: Dockerfile
+    container_name: insurance-agent-service
+    restart: unless-stopped
+    ports:
+      - "9062:9062"
+      - "5062:5062"
+    env_file:
+      - .env
+    environment:
+      - CHROMADB_URL=http://chromadb:8000
+      - BACKEND_URL=http://backend:8062
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./agent-service:/app
+      - agent_models:/app/models
+    depends_on:
+      chromadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "python -m uvicorn main:app --host 0.0.0.0 --port 9062 &
+             python mcp/server.py &
+             wait"
+    networks:
+      - insurance-network
+
+  # ==========================================================================
+  # Node.js API Gateway - Port 4062
+  # ==========================================================================
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: insurance-api-gateway
+    restart: unless-stopped
+    ports:
+      - "4062:4062"
+    env_file:
+      - .env
+    environment:
+      - PORT=4062
+      - BACKEND_URL=http://backend:8062
+      - AGENT_SERVICE_URL=http://agent-service:9062
+      - MCP_SERVER_URL=http://agent-service:5062
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - backend
+      - agent-service
+    networks:
+      - insurance-network
+
+  # ==========================================================================
+  # React Frontend - Port 3062
+  # ==========================================================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: insurance-frontend
+    restart: unless-stopped
+    ports:
+      - "3062:3062"
+    environment:
+      - REACT_APP_API_URL=http://172.168.1.95:4062/api
+      - REACT_APP_WS_URL=ws://172.168.1.95:4062/ws
+    depends_on:
+      - api-gateway
+    networks:
+      - insurance-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  chroma_data:
+  backend_media:
+  backend_static:
+  agent_models:
+
+networks:
+  insurance-network:
+    driver: bridge

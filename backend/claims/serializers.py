@@ -77,12 +77,17 @@ class ClaimNoteSerializer(serializers.ModelSerializer):
 
 
 class AuditLogSerializer(serializers.ModelSerializer):
-    user_name = serializers.CharField(source='user.get_full_name', read_only=True, default='System')
+    user_name = serializers.SerializerMethodField()
 
     class Meta:
         model = AuditLog
         fields = '__all__'
         read_only_fields = ['id', 'timestamp']
+
+    def get_user_name(self, obj):
+        if obj.user:
+            return obj.user.get_full_name() or obj.user.username
+        return 'System'
 
 
 class FraudAlertSerializer(serializers.ModelSerializer):

@@ -198,6 +198,9 @@ class Command(BaseCommand):
         if not AuditLog.objects.exists():
             self._seed_audit_logs(admin, adjusters)
 
+        # Backfill processing logs for approved/settled claims
+        self._backfill_processing_logs()
+
         self.stdout.write(self.style.SUCCESS(
             f'Seeded: 1 admin, 3 adjusters, {len(customers_data)} customers with policies and claims, '
             f'1 demo user, fraud alerts, notifications, audit logs'

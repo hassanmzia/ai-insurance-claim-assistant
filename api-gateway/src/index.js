@@ -7,7 +7,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
-const { createProxyMiddleware } = require('http-proxy-middleware');
+const { createProxyMiddleware, fixRequestBody } = require('http-proxy-middleware');
 const rateLimit = require('express-rate-limit');
 const { WebSocketServer } = require('ws');
 const http = require('http');
@@ -18,7 +18,7 @@ const BACKEND_URL = process.env.BACKEND_URL || 'http://backend:8062';
 const AGENT_SERVICE_URL = process.env.AGENT_SERVICE_URL || 'http://agent-service:9062';
 const MCP_SERVER_URL = process.env.MCP_SERVER_URL || 'http://agent-service:5062';
 
-// Middleware
+// Middleware - order matters: CORS and helmet first, then logging
 app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(cors({
   origin: [
@@ -31,7 +31,6 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
 }));
 app.use(morgan('combined'));
-app.use(express.json({ limit: '10mb' }));
 
 // Rate limiting
 const limiter = rateLimit({
@@ -42,7 +41,7 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// Health check
+// Health check (only this route needs body parsing)
 app.get('/health', (req, res) => {
   res.json({
     status: 'healthy',
@@ -62,19 +61,10 @@ app.get('/health', (req, res) => {
 app.use('/api', createProxyMiddleware({
   target: BACKEND_URL,
   changeOrigin: true,
-  pathRewrite: { '^/api': '/api' },
   timeout: 120000,
   onError: (err, req, res) => {
     console.error(`[Proxy] Backend error: ${err.message}`);
     res.status(502).json({ error: 'Backend service unavailable' });
-  },
-  onProxyReq: (proxyReq, req) => {
-    if (req.body && Object.keys(req.body).length > 0) {
-      const bodyData = JSON.stringify(req.body);
-      proxyReq.setHeader('Content-Type', 'application/json');
-      proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
-      proxyReq.write(bodyData);
-    }
   },
 }));
 
@@ -90,14 +80,6 @@ app.use('/agents', createProxyMiddleware({
     console.error(`[Proxy] Agent service error: ${err.message}`);
     res.status(502).json({ error: 'Agent service unavailable' });
   },
-  onProxyReq: (proxyReq, req) => {
-    if (req.body && Object.keys(req.body).length > 0) {
-      const bodyData = JSON.stringify(req.body);
-      proxyReq.setHeader('Content-Type', 'application/json');
-      proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
-      proxyReq.write(bodyData);
-    }
-  },
 }));
 
 // ============================================================
@@ -111,14 +93,6 @@ app.use('/mcp', createProxyMiddleware({
   onError: (err, req, res) => {
     console.error(`[Proxy] MCP server error: ${err.message}`);
     res.status(502).json({ error: 'MCP server unavailable' });
-  },
-  onProxyReq: (proxyReq, req) => {
-    if (req.body && Object.keys(req.body).length > 0) {
-      const bodyData = JSON.stringify(req.body);
-      proxyReq.setHeader('Content-Type', 'application/json');
-      proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
-      proxyReq.write(bodyData);
-    }
   },
 }));
 
@@ -143,7 +117,6 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 wss.on('connection', (ws, req) => {
   console.log(`[WS] Client connected: ${req.url}`);
 
-  // Proxy WebSocket to Django Channels
   const WebSocket = require('ws');
   const backendWsUrl = `ws://${BACKEND_URL.replace('http://', '')}${req.url}`;
   const backendWs = new WebSocket(backendWsUrl);
@@ -153,15 +126,11 @@ wss.on('connection', (ws, req) => {
   });
 
   backendWs.on('message', (data) => {
-    if (ws.readyState === ws.OPEN) {
-      ws.send(data.toString());
-    }
+    if (ws.readyState === ws.OPEN) ws.send(data.toString());
   });
 
   ws.on('message', (data) => {
-    if (backendWs.readyState === backendWs.OPEN) {
-      backendWs.send(data.toString());
-    }
+    if (backendWs.readyState === backendWs.OPEN) backendWs.send(data.toString());
   });
 
   ws.on('close', () => {

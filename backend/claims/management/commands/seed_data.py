@@ -16,18 +16,30 @@ class Command(BaseCommand):
         parser.add_argument('--noinput', action='store_true')
 
     def handle(self, *args, **options):
-        if User.objects.filter(username='admin').exists():
+        # Check if seeding is truly complete (admin + profile + at least one policy)
+        if (User.objects.filter(username='admin').exists()
+                and UserProfile.objects.filter(user__username='admin').exists()
+                and InsurancePolicy.objects.exists()):
             self.stdout.write('Data already seeded, skipping.')
             return
 
         self.stdout.write('Seeding database...')
 
-        # Create admin user
-        admin = User.objects.create_superuser(
-            username='admin', email='admin@insurance.com',
-            password='admin123', first_name='System', last_name='Admin'
+        # Create admin user (get_or_create to handle partial previous runs)
+        admin, created = User.objects.get_or_create(
+            username='admin',
+            defaults={
+                'email': 'admin@insurance.com',
+                'first_name': 'System',
+                'last_name': 'Admin',
+                'is_staff': True,
+                'is_superuser': True,
+            }
         )
-        UserProfile.objects.create(user=admin, role='admin', department='IT')
+        if created:
+            admin.set_password('admin123')
+            admin.save()
+        UserProfile.objects.get_or_create(user=admin, defaults={'role': 'admin', 'department': 'IT'})
 
         # Create adjusters
         adjusters = []
@@ -35,12 +47,17 @@ class Command(BaseCommand):
             ('Sarah', 'Mitchell'), ('James', 'Rodriguez'), ('Emily', 'Chen'),
         ]
         for first, last in adjuster_names:
-            u = User.objects.create_user(
+            u, created = User.objects.get_or_create(
                 username=f'{first.lower()}.{last.lower()}',
-                email=f'{first.lower()}.{last.lower()}@insurance.com',
-                password='password123', first_name=first, last_name=last,
+                defaults={
+                    'email': f'{first.lower()}.{last.lower()}@insurance.com',
+                    'first_name': first, 'last_name': last,
+                }
             )
-            UserProfile.objects.create(user=u, role='adjuster', department='Claims')
+            if created:
+                u.set_password('password123')
+                u.save()
+            UserProfile.objects.get_or_create(user=u, defaults={'role': 'adjuster', 'department': 'Claims'})
             adjusters.append(u)
 
         # Create customers with policies and claims
@@ -79,12 +96,17 @@ class Command(BaseCommand):
                     'denied', 'settled', 'pending_info', 'approved', 'submitted', 'under_review']
 
         for i, (first, last) in enumerate(customers_data):
-            u = User.objects.create_user(
+            u, created = User.objects.get_or_create(
                 username=f'{first.lower()}.{last.lower()}',
-                email=f'{first.lower()}@example.com',
-                password='password123', first_name=first, last_name=last,
+                defaults={
+                    'email': f'{first.lower()}@example.com',
+                    'first_name': first, 'last_name': last,
+                }
             )
-            UserProfile.objects.create(user=u, role='customer')
+            if created:
+                u.set_password('password123')
+                u.save()
+            UserProfile.objects.get_or_create(user=u, defaults={'role': 'customer'})
 
             policy = InsurancePolicy.objects.create(
                 policy_number=f'POL-{100000 + i}',
@@ -137,11 +159,17 @@ class Command(BaseCommand):
             )
 
         # Create a demo/test user
-        demo = User.objects.create_user(
-            username='demo', email='demo@insurance.com',
-            password='demo123', first_name='Demo', last_name='User',
+        demo, created = User.objects.get_or_create(
+            username='demo',
+            defaults={
+                'email': 'demo@insurance.com',
+                'first_name': 'Demo', 'last_name': 'User',
+            }
         )
-        UserProfile.objects.create(user=demo, role='adjuster', department='Claims')
+        if created:
+            demo.set_password('demo123')
+            demo.save()
+        UserProfile.objects.get_or_create(user=demo, defaults={'role': 'adjuster', 'department': 'Claims'})
 
         self.stdout.write(self.style.SUCCESS(
             f'Seeded: 1 admin, 3 adjusters, {len(customers_data)} customers with policies and claims, 1 demo user'

@@ -34,6 +34,7 @@ class Command(BaseCommand):
                 self._seed_notifications(admin, adjusters)
             if not AuditLog.objects.exists():
                 self._seed_audit_logs(admin, adjusters)
+            self._backfill_processing_logs()
             return
 
         self.stdout.write('Seeding database...')
@@ -163,6 +164,7 @@ class Command(BaseCommand):
                     'deductible': float(policy.deductible_amount),
                     'settlement_amount': float(claim.settlement_amount),
                 }
+                claim.ai_processing_log = self._generate_processing_log()
                 claim.save()
 
             ClaimNote.objects.create(
@@ -337,3 +339,73 @@ class Command(BaseCommand):
                     details={'approved_amount': float(claim.approved_amount or 0)},
                 )
         self.stdout.write(f'  Created audit logs for {len(claims)} claims')
+
+    def _generate_processing_log(self):
+        """Generate a realistic AI processing pipeline log."""
+        import time
+        base_ts = time.time() - random.randint(3600, 86400)
+        return [
+            {
+                'step': 'claim_parsing',
+                'agent': 'ClaimParser',
+                'status': 'completed',
+                'duration_ms': random.randint(800, 2500),
+                'result_summary': 'Extracted claim details and identified loss type',
+                'timestamp': base_ts,
+            },
+            {
+                'step': 'policy_query_generation',
+                'agent': 'PolicyRetriever',
+                'status': 'completed',
+                'duration_ms': random.randint(500, 1500),
+                'result_summary': 'Generated 3 policy queries for RAG retrieval',
+                'timestamp': base_ts + 3,
+            },
+            {
+                'step': 'policy_retrieval',
+                'agent': 'PolicyRetriever',
+                'status': 'completed',
+                'duration_ms': random.randint(1000, 3000),
+                'result_summary': 'Retrieved relevant policy sections from vector store',
+                'timestamp': base_ts + 6,
+            },
+            {
+                'step': 'fraud_detection',
+                'agent': 'FraudDetector',
+                'status': 'completed',
+                'duration_ms': random.randint(1200, 4000),
+                'result_summary': f'Fraud score: {random.randint(5, 35)}% - Low risk',
+                'timestamp': base_ts + 10,
+            },
+            {
+                'step': 'recommendation_generation',
+                'agent': 'RecommendationAgent',
+                'status': 'completed',
+                'duration_ms': random.randint(2000, 5000),
+                'result_summary': 'Generated coverage recommendation with settlement calculation',
+                'timestamp': base_ts + 15,
+            },
+            {
+                'step': 'decision_finalization',
+                'agent': 'DecisionMaker',
+                'status': 'completed',
+                'duration_ms': random.randint(1500, 3500),
+                'result_summary': 'Final decision: Approve with standard deductible applied',
+                'timestamp': base_ts + 20,
+            },
+        ]
+
+    def _backfill_processing_logs(self):
+        """Add processing logs to approved/settled claims that are missing them."""
+        claims = Claim.objects.filter(
+            status__in=['approved', 'settled'],
+            ai_recommendation__isnull=False,
+        )
+        updated = 0
+        for claim in claims:
+            if not claim.ai_processing_log:
+                claim.ai_processing_log = self._generate_processing_log()
+                claim.save(update_fields=['ai_processing_log'])
+                updated += 1
+        if updated:
+            self.stdout.write(f'  Backfilled processing logs for {updated} claims')
